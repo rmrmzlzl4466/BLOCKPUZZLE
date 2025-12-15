@@ -1,0 +1,1187 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Block Line – Excel Stage Loader</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#141925; --line:#2a3140; --text:#e6e9f2; --muted:#9aa3b2;
+    --card:#121827; --bad:#ef4444; --good:#22c55e;
+  }
+  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif; }
+  .app{ height:100%; display:flex; max-width:1180px; margin:0 auto; }
+  .left{ flex:1; display:flex; flex-direction:column; min-width:360px; }
+  .top{ padding:10px 12px; border-bottom:1px solid var(--line); background:var(--panel); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .pill{ border:1px solid var(--line); border-radius:999px; padding:6px 10px; color:var(--muted); font-size:13px; white-space:nowrap; }
+  .pill strong{ color:#e5e7eb; }
+  .pill.good{ border-color: rgba(34,197,94,0.35); color:#b9f6cf; }
+  .pill.bad{ border-color: rgba(239,68,68,0.35); color:#fecaca; }
+  .canvasWrap{ flex:1; display:flex; align-items:center; justify-content:center; padding:10px; }
+  canvas{ width:100%; height:auto; max-width:720px; background:#0b0d12; border:1px solid var(--line); border-radius:14px; touch-action:none; }
+
+  .right{
+    width:360px; border-left:1px solid var(--line); background:var(--panel);
+    display:flex; flex-direction:column;
+  }
+  .panelHead{ padding:10px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .panelHead strong{ font-size:14px; }
+  .panel{ padding:10px 12px; overflow:auto; }
+  .group{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px; margin-bottom:10px; }
+  .group h4{ margin:0 0 8px; font-size:13px; color:#cbd5e1; }
+  .group p{ margin:0 0 8px; color:var(--muted); font-size:12px; line-height:1.35; }
+
+  input[type="range"]{ width:100%; }
+  .control{ display:grid; grid-template-columns: 1fr 96px; gap:10px; align-items:start; margin:10px 0 14px; }
+  .control .meta{ display:flex; flex-direction:column; gap:4px; }
+  .control .name{ font-size:12px; color:#e5e7eb; font-weight:700; }
+  .control .desc{ font-size:11px; color:var(--muted); line-height:1.35; }
+  .control .unit{ font-size:11px; color:#cbd5e1; text-align:right; }
+  .control .value{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+    font-size:12px; color:#e5e7eb; text-align:right;
+  }
+  .scale{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:4px; }
+  .presets{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .pbtn{ background:#1b2333; border:1px solid var(--line); color:#e5e7eb; padding:8px 10px; border-radius:12px; font-weight:800; font-size:12px; cursor:pointer; }
+  .pbtn:active{ transform:translateY(1px); }
+  .warn{ color:#fbbf24; font-size:11px; line-height:1.35; margin-top:6px; }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .mini{ font-size:12px; padding:8px 10px; border-radius:12px; border:1px solid var(--line); background:#1b2333; color:#e5e7eb; cursor:pointer; }
+  .mini:active{ transform:translateY(1px); }
+  .mono{ font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+
+  .btnbar{ padding:10px 12px; border-top:1px solid var(--line); background:var(--panel); display:flex; gap:10px; flex-wrap:wrap; }
+  .btn{ flex:1; min-width:120px; background:#222a3a; color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px 10px;
+    font-weight:800; cursor:pointer; }
+  .btn:active{ transform:translateY(1px); }
+
+  .hint{ padding:10px 12px; color:var(--muted); font-size:12px; line-height:1.35; border-top:1px solid var(--line); background:var(--panel);}
+  .k{ font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+
+  @media (max-width: 980px){
+    .app{ flex-direction:column; }
+    .right{ width:auto; border-left:none; border-top:1px solid var(--line); }
+    canvas{ max-width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="left">
+    <div class="top">
+      <div class="pill" id="stagePill">Stage <strong>-</strong> / -</div>
+      <div class="pill" id="sel">Selected: -</div>
+      <div class="pill" id="msg">Tap to select, drag to move</div>
+      <div class="pill" id="state">State: Boot</div>
+      <div class="pill" id="excelPill">Excel: <strong class="mono">stagedata.xlsx</strong></div>
+    </div>
+
+    <div class="canvasWrap">
+      <canvas id="cv"></canvas>
+    </div>
+
+    <div class="btnbar">
+      <button class="btn" id="prevLine">Prev Line</button>
+      <button class="btn" id="nextLine">Next Line</button>
+      <button class="btn" id="prevStage">Prev Stage</button>
+      <button class="btn" id="nextStage">Next Stage</button>
+      <button class="btn" id="reset">Restart Stage</button>
+    </div>
+
+    <div class="hint">
+      조작: 블럭라인 <span class="k">탭</span>으로 선택 → <span class="k">클릭&드래그</span>로 “한 칸씩” 끌기<br/>
+      엑셀 로딩: 같은 폴더에 <span class="k">stagedata.xlsx</span>를 두면 새로고침 시 자동 반영 (시트 1개=스테이지 1개)<br/>
+      출구: 같은 색 출구에 닿으면 <span class="k">머리→몸통→꼬리</span> 순서로 “쏘옥쏘옥” 흡입<br/>
+      아이템: <span class="k">+</span> (길이 +1, 즉시 반영)
+    </div>
+  </div>
+
+  <aside class="right">
+    <div class="panelHead">
+      <strong>튜닝 패널</strong>
+      <div class="row">
+        <button class="mini" id="reloadExcel">Excel 다시 불러오기</button>
+        <button class="mini" id="pickExcel">파일 선택</button>
+      </div>
+    </div>
+    <div class="panel" id="panel"></div>
+  </aside>
+</div>
+
+<input id="excelFile" type="file" accept=".xlsx" style="display:none" />
+
+<!-- SheetJS (필요): 온라인 환경에서 로딩 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+/* ======================
+   TOKENS (Excel)
+   - 시트 1개 = 스테이지 1개
+   - 맵 영역: A1 ~ (값이 존재하는 마지막 셀) 까지 자동 결정
+   - 빈칸(공백)은 바닥(O)로 취급
+   Tiles:
+     X : wall
+     O : floor
+     b r g y : exits
+     + : pickup (+1 length)
+   BlockLines (최대 4개):
+     B1,B2,...,BX  /  R1..RX / G1..GX / Y1..YX
+====================== */
+
+/* ======================
+   COLORS (max 4)
+====================== */
+const COLORS = {
+  blue:   { exit:"b", fill:"rgba(59,130,246,0.95)", glow:"rgba(59,130,246,0.55)" },
+  red:    { exit:"r", fill:"rgba(239,68,68,0.95)",  glow:"rgba(239,68,68,0.55)" },
+  green:  { exit:"g", fill:"rgba(34,197,94,0.95)",  glow:"rgba(34,197,94,0.55)" },
+  yellow: { exit:"y", fill:"rgba(234,179,8,0.95)",  glow:"rgba(234,179,8,0.55)" },
+};
+function exitCharFor(color){ return COLORS[color].exit; }
+function isExitChar(ch){ return ch==="b"||ch==="r"||ch==="g"||ch==="y"; }
+
+/* ======================
+   TUNABLE PARAMS
+====================== */
+const P = {
+  // Drag → move enqueue
+  threshRatio: 0.42,
+  maxStepsPerMove: 2,
+  accCapCells: 1.2,
+  teleportPx: 120,
+  queueCap: 6,
+
+  // Movement pacing
+  stepMs: 95,
+  animMs: 120,
+  blockedWaitMs: 70,
+
+  // Exit "쏘옥쏘옥" (head->body->tail)
+  drainStepMs: 120,
+  drainPull: 0.22,
+  drainShrink: 0.85,
+  exitPulseMs: 280,
+
+  // Feel
+  nonSelectedAlpha: 0.30,
+};
+
+/* ======================
+   GAME STATE
+====================== */
+let STAGES = [];   // loaded from Excel
+let stageIndex = 0;
+
+let W = 9, H = 9;  // per-stage dynamic
+let GRID = [];
+let lines = [];
+let current = 0;
+let pointer = null;
+
+function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
+function easeOutCubic(t){ return 1 - Math.pow(1-t,3); }
+function inBounds(x,y){ return x>=0 && y>=0 && x<W && y<H; }
+function tileAt(x,y){ if(!inBounds(x,y)) return "#"; return GRID[y][x]; }
+function setTile(x,y,ch){
+  if(!inBounds(x,y)) return;
+  const row = GRID[y].split("");
+  row[x] = ch;
+  GRID[y] = row.join("");
+}
+function isWall(x,y){ return tileAt(x,y) === "#"; }
+function isPickup(x,y){ return tileAt(x,y) === "+"; }
+
+function isOccupied(x,y){
+  for(const l of lines){
+    for(const c of l.segments){
+      if(c[0]===x && c[1]===y) return true;
+    }
+  }
+  return false;
+}
+
+function setStateLabel(txt){
+  document.getElementById("state").textContent = "State: " + txt;
+}
+
+function setSelected(idx){
+  if(lines.length===0){ document.getElementById("sel").textContent = "Selected: -"; return; }
+  current = (idx + lines.length) % lines.length;
+  const col = lines[current]?.color || "blue";
+  document.getElementById("sel").textContent =
+    "Selected: " + (col[0].toUpperCase()+col.slice(1));
+}
+
+function updateStagePill(){
+  const total = STAGES.length || 0;
+  const cur = total ? (stageIndex+1) : "-";
+  document.getElementById("stagePill").innerHTML = `Stage <strong>${cur}</strong> / ${total || "-"}`;
+}
+
+function findNextAlive(from){
+  for(let step=1; step<=lines.length; step++){
+    const idx = (from+step) % lines.length;
+    if(lines[idx].segments.length>0 && !lines[idx].draining) return idx;
+  }
+  return -1;
+}
+function allCleared(){ return lines.every(l => l.segments.length===0); }
+
+/* ======================
+   CANVAS / DPR + METRICS
+====================== */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let metrics = { ox:0, oy:0, cell:1, bw:1, bh:1, rect:null };
+
+function resizeCanvas(){
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = cv.getBoundingClientRect();
+  const size = rect.width;
+  const w = Math.floor(size * dpr);
+  const h = Math.floor(size * dpr);
+  if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+  const CW = cv.width, CH = cv.height;
+  const pad = Math.floor(Math.min(CW,CH) * 0.05);
+  const cell = Math.floor((Math.min(CW,CH) - pad*2) / Math.max(W,H));
+  const bw = cell * W;
+  const bh = cell * H;
+  const ox = Math.floor((CW - bw)/2);
+  const oy = Math.floor((CH - bh)/2);
+  metrics = { ox, oy, cell, bw, bh, rect };
+}
+window.addEventListener("resize", resizeCanvas, {passive:true});
+
+/* ======================
+   LOAD STAGE
+====================== */
+function deepCopySegments(arr){ return arr.map(p=>[p[0],p[1]]); }
+
+function loadStage(idx){
+  if(STAGES.length===0){
+    GRID = ["#########","#.......#","#.......#","#.......#","#.......#","#.......#","#.......#","#.......#","#########"];
+    W = 9; H = 9;
+    lines = [];
+    current = 0;
+    mover.queue.length = 0;
+    anim.active = false;
+    exitFX.length = 0;
+    updateStagePill();
+    setSelected(0);
+    setStateLabel("No stages");
+    return;
+  }
+
+  stageIndex = (idx + STAGES.length) % STAGES.length;
+  const s = STAGES[stageIndex];
+
+  W = s.w; H = s.h;
+  GRID = s.grid.slice();
+  lines = s.lines.slice(0,4).map((l, i)=>({
+    id:i,
+    color:l.color,
+    segments: deepCopySegments(l.segments),
+    draining:null
+  }));
+
+  current = 0;
+  mover.queue.length = 0;
+  anim.active = false;
+  exitFX.length = 0;
+  clearTimer.active = false;
+
+  updateStagePill();
+  setSelected(0);
+  setStateLabel("Play");
+}
+
+/* ======================
+   MOVE + VISUAL ANIM
+====================== */
+let anim = { active:false, t0:0, dur:120, prev:[] };
+
+function snapshotSegments(){
+  return lines.map(l => l.segments.map(p=>[p[0],p[1]]));
+}
+function startAnim(prevSnapshot){
+  anim.active = true;
+  anim.t0 = performance.now();
+  anim.dur = P.animMs;
+  anim.prev = prevSnapshot;
+}
+
+/* ======================
+   RATE-LIMITED MOVE QUEUE
+====================== */
+const mover = { queue:[], nextAt:0 };
+
+function enqueueMove(idx, dx, dy){
+  const l = lines[idx];
+  if(!l || l.segments.length===0 || l.draining) return;
+  if(mover.queue.length >= P.queueCap) return;
+  mover.queue.push({idx, dx, dy});
+}
+
+function tryMoveLine(lineIdx, dx, dy){
+  const line = lines[lineIdx];
+  if(!line || line.segments.length===0) return false;
+  if(line.draining) return false;
+
+  const [hx,hy] = line.segments[0];
+  const nx = hx+dx, ny = hy+dy;
+
+  if(isWall(nx,ny)) return false;
+  if(isOccupied(nx,ny)) return false;
+
+  const prevSnap = snapshotSegments();
+
+  // +1 pickup -> grow immediately (do not pop tail this move)
+  const grew = isPickup(nx,ny);
+
+  line.segments.unshift([nx,ny]);
+  if(!grew) line.segments.pop();
+  else setTile(nx,ny,"."); // consume
+
+  // exit -> start draining head->body->tail
+  if(tileAt(nx,ny) === exitCharFor(line.color)){
+    const now = performance.now();
+    line.draining = { exit:[nx,ny], segT0: now, stepDur: P.drainStepMs };
+    setStateLabel("Exit In");
+    spawnExitPulse(nx, ny, line.color);
+  }
+
+  startAnim(prevSnap);
+  return true;
+}
+
+function processMover(now){
+  if(anim.active) return;
+  if(now < mover.nextAt) return;
+  if(mover.queue.length === 0) return;
+
+  const m = mover.queue.shift();
+  const ok = tryMoveLine(m.idx, m.dx, m.dy);
+
+  mover.nextAt = now + (ok ? P.stepMs : P.blockedWaitMs);
+}
+
+/* ======================
+   EXIT FX (rings)
+====================== */
+const exitFX = [];
+function spawnExitPulse(x,y,color){
+  exitFX.push({x,y,color,t0:performance.now(),dur:P.exitPulseMs});
+}
+function processExitFX(now){
+  for(const fx of exitFX) fx.dur = P.exitPulseMs;
+  for(let i=exitFX.length-1;i>=0;i--){
+    const fx = exitFX[i];
+    const t = (now - fx.t0) / fx.dur;
+    if(t >= 1) exitFX.splice(i,1);
+  }
+}
+
+/* ======================
+   DRAINING (head -> body -> tail)
+====================== */
+function processDrain(now){
+  let anyDraining = false;
+
+  for(let i=0;i<lines.length;i++){
+    const l = lines[i];
+    if(!l.draining) continue;
+    anyDraining = true;
+
+    if(l.segments.length===0){
+      l.draining = null;
+      continue;
+    }
+
+    l.draining.stepDur = P.drainStepMs;
+
+    const d = l.draining;
+    const t = clamp((now - d.segT0) / d.stepDur, 0, 1);
+
+    if(t >= 1){
+      l.segments.shift();
+      d.segT0 = now;
+      spawnExitPulse(d.exit[0], d.exit[1], l.color);
+
+      if(l.segments.length===0){
+        l.draining = null;
+
+        if(i === current){
+          const nextIdx = findNextAlive(current);
+          if(nextIdx !== -1) setSelected(nextIdx);
+        }
+      }
+    }
+  }
+
+  if(!anyDraining){
+    setStateLabel("Play");
+    if(allCleared() && STAGES.length>0){
+      setStateLabel("Clear!");
+      if(!clearTimer.active){
+        clearTimer.active = true;
+        clearTimer.t0 = now;
+      }
+    }
+  }
+}
+
+const clearTimer = { active:false, t0:0 };
+function processClearTimer(now){
+  if(!clearTimer.active) return;
+  if(now - clearTimer.t0 > 650){
+    clearTimer.active = false;
+    loadStage(stageIndex+1);
+  }
+}
+
+/* ======================
+   POINTER: TAP SELECT + DRAG
+====================== */
+function clientToGrid(clientX, clientY){
+  const rect = metrics.rect || cv.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  const cellCss = rect.width / Math.max(W,H); // keep scale stable with non-square stages
+  const gx = Math.floor(x / (rect.width / W));
+  const gy = Math.floor(y / (rect.height / H));
+  return { gx, gy, cellCss, rect };
+}
+
+function hitTestLine(clientX, clientY){
+  const {gx,gy} = clientToGrid(clientX, clientY);
+  for(let i=0;i<lines.length;i++){
+    for(const c of lines[i].segments){
+      if(c[0]===gx && c[1]===gy) return i;
+    }
+  }
+  return -1;
+}
+
+function dragAccumulate(clientX, clientY){
+  const {cellCss} = clientToGrid(clientX, clientY);
+  const dx = clientX - pointer.lastX;
+  const dy = clientY - pointer.lastY;
+
+  pointer.lastX = clientX;
+  pointer.lastY = clientY;
+
+  if(Math.abs(dx) > P.teleportPx || Math.abs(dy) > P.teleportPx){
+    pointer.accX = 0;
+    pointer.accY = 0;
+    return;
+  }
+
+  const cap = cellCss * P.accCapCells;
+  pointer.accX = clamp(pointer.accX + dx, -cap, cap);
+  pointer.accY = clamp(pointer.accY + dy, -cap, cap);
+
+  const thresh = cellCss * P.threshRatio;
+  let stepsEnqueued = 0;
+
+  while(stepsEnqueued < P.maxStepsPerMove){
+    if(Math.abs(pointer.accX) < thresh && Math.abs(pointer.accY) < thresh) break;
+
+    if(Math.abs(pointer.accX) >= Math.abs(pointer.accY)){
+      const dir = pointer.accX > 0 ? 1 : -1;
+      enqueueMove(current, dir, 0);
+      pointer.accX -= dir * thresh;
+    } else {
+      const dir = pointer.accY > 0 ? 1 : -1;
+      enqueueMove(current, 0, dir);
+      pointer.accY -= dir * thresh;
+    }
+    stepsEnqueued++;
+    pointer.moved = true;
+  }
+}
+
+cv.addEventListener("pointerdown", (e)=>{
+  resizeCanvas();
+  metrics.rect = cv.getBoundingClientRect();
+  cv.setPointerCapture(e.pointerId);
+  pointer = {
+    down:true, pid:e.pointerId,
+    startX:e.clientX, startY:e.clientY,
+    lastX:e.clientX, lastY:e.clientY,
+    accX:0, accY:0,
+    moved:false,
+  };
+
+  const hit = hitTestLine(e.clientX, e.clientY);
+  if(hit !== -1) setSelected(hit);
+
+  mover.queue.length = 0;
+  clearTimer.active = false;
+
+  e.preventDefault();
+}, {passive:false});
+
+cv.addEventListener("pointermove", (e)=>{
+  if(!pointer || !pointer.down || e.pointerId !== pointer.pid) return;
+  dragAccumulate(e.clientX, e.clientY);
+  e.preventDefault();
+}, {passive:false});
+
+function endPointer(e){
+  if(!pointer) return;
+
+  const dist = Math.hypot(pointer.lastX - pointer.startX, pointer.lastY - pointer.startY);
+  if(!pointer.moved && dist < 10){
+    const hit = hitTestLine(pointer.lastX, pointer.lastY);
+    if(hit !== -1) setSelected(hit);
+  }
+
+  mover.queue.length = 0;
+  pointer.accX = 0; pointer.accY = 0;
+
+  pointer.down = false;
+  pointer = null;
+  if(e) e.preventDefault();
+}
+
+cv.addEventListener("pointerup", (e)=>{ if(pointer && e.pointerId===pointer.pid) endPointer(e); }, {passive:false});
+cv.addEventListener("pointercancel", (e)=>{ if(pointer && e.pointerId===pointer.pid) endPointer(e); }, {passive:false});
+cv.addEventListener("lostpointercapture", ()=>{ endPointer(null); });
+
+/* ======================
+   BUTTONS
+====================== */
+document.getElementById("prevLine").onclick = ()=>{
+  for(let step=1; step<=lines.length; step++){
+    const idx = (current - step + lines.length) % lines.length;
+    if(lines[idx].segments.length>0 && !lines[idx].draining){ setSelected(idx); return; }
+  }
+};
+document.getElementById("nextLine").onclick = ()=>{
+  const idx = findNextAlive(current);
+  if(idx !== -1) setSelected(idx);
+};
+document.getElementById("reset").onclick = ()=>loadStage(stageIndex);
+document.getElementById("prevStage").onclick = ()=>loadStage(stageIndex-1);
+document.getElementById("nextStage").onclick = ()=>loadStage(stageIndex+1);
+
+/* ======================
+   RENDER
+====================== */
+function roundRect(x,y,w,h,r){
+  const rr = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rr);
+  ctx.arcTo(x+w,y+h,x,y+h,rr);
+  ctx.arcTo(x,y+h,x,y,rr);
+  ctx.arcTo(x,y,x+w,y,rr);
+  ctx.closePath();
+}
+
+function drawTiles(){
+  const {ox,oy,cell} = metrics;
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const t = tileAt(x,y);
+      const px = ox + x*cell;
+      const py = oy + y*cell;
+
+      if(t==="#"){
+        ctx.fillStyle = "#161a22";
+        ctx.fillRect(px,py,cell,cell);
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.fillRect(px,py,cell,Math.max(2,Math.floor(cell*0.10)));
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(px,py+cell-Math.max(2,Math.floor(cell*0.10)),cell,Math.max(2,Math.floor(cell*0.10)));
+      } else {
+        ctx.fillStyle = "#101827";
+        ctx.fillRect(px,py,cell,cell);
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.strokeRect(px+0.5,py+0.5,cell-1,cell-1);
+      }
+
+      if(isExitChar(t)){
+        const color = Object.keys(COLORS).find(k=>COLORS[k].exit===t) || "blue";
+        const glow = COLORS[color].glow;
+        ctx.fillStyle = glow.replace("0.55","0.22");
+        roundRect(px+6,py+6,cell-12,cell-12,12);
+        ctx.fill();
+        ctx.strokeStyle = glow;
+        ctx.stroke();
+
+        ctx.fillStyle = COLORS[color].fill;
+        ctx.font = `900 ${Math.max(12,Math.floor(cell*0.26))}px system-ui`;
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText(t.toUpperCase(), px+cell/2, py+cell/2);
+      }
+
+      if(t==="+"){
+        ctx.fillStyle = "rgba(148,163,184,0.15)";
+        roundRect(px+6,py+6,cell-12,cell-12,12);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(148,163,184,0.35)";
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(226,232,240,0.95)";
+        ctx.font = `900 ${Math.max(11,Math.floor(cell*0.22))}px system-ui`;
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText("+1", px+cell/2, py+cell/2);
+      }
+    }
+  }
+}
+
+function drawExitFX(now){
+  const {ox,oy,cell} = metrics;
+  for(const fx of exitFX){
+    const t = clamp((now - fx.t0) / fx.dur, 0, 1);
+    const a = 1 - t;
+    const x = ox + fx.x*cell + cell/2;
+    const y = oy + fx.y*cell + cell/2;
+    const r = (cell*0.16) + t*(cell*0.30);
+    ctx.globalAlpha = 0.65 * a;
+    ctx.strokeStyle = COLORS[fx.color].fill;
+    ctx.lineWidth = Math.max(2, Math.floor(cell*0.05));
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawLines(now){
+  const {ox,oy,cell} = metrics;
+
+  let a = 1;
+  if(anim.active){
+    a = clamp((now - anim.t0) / anim.dur, 0, 1);
+    if(a >= 1) anim.active = false;
+    a = easeOutCubic(a);
+  }
+
+  for(let i=0;i<lines.length;i++){
+    const l = lines[i];
+    if(l.segments.length===0) continue;
+
+    const selected = (i===current);
+    const alphaBase = selected ? 1.0 : P.nonSelectedAlpha;
+
+    const cur = l.segments;
+    const prev = anim.active ? (anim.prev[i] || []) : cur;
+
+    let drain = null;
+    let enterT = 0;
+    if(l.draining){
+      drain = l.draining;
+      enterT = clamp((now - drain.segT0) / drain.stepDur, 0, 1);
+      enterT = easeOutCubic(enterT);
+    }
+
+    for(let s=0;s<cur.length;s++){
+      const [cx,cy] = cur[s];
+      let px = cx, py = cy;
+
+      if(anim.active && prev[s]){
+        px = prev[s][0] + (cx - prev[s][0]) * a;
+        py = prev[s][1] + (cy - prev[s][1]) * a;
+      }
+
+      let scale = 1;
+      let extraAlpha = 1;
+
+      if(drain){
+        const ex = drain.exit[0], ey = drain.exit[1];
+        const pull = P.drainPull * (0.35 + 0.65*enterT) * (1 - (s / Math.max(1,cur.length)));
+        px = px + (ex - px) * pull;
+        py = py + (ey - py) * pull;
+
+        if(s === 0){
+          scale = 1 - (P.drainShrink * enterT);
+          extraAlpha = 1 - (0.55 * enterT);
+          px = px + (ex - px) * (0.55 * enterT);
+          py = py + (ey - py) * (0.55 * enterT);
+        }
+      }
+
+      const x = ox + px*cell;
+      const y = oy + py*cell;
+
+      const w = (cell-10) * scale;
+      const h = (cell-10) * scale;
+      const insetX = (cell - w)/2;
+      const insetY = (cell - h)/2;
+
+      ctx.globalAlpha = alphaBase * extraAlpha;
+
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      roundRect(x+6+insetX, y+8+insetY, w-2, h-2, 14);
+      ctx.fill();
+
+      ctx.fillStyle = COLORS[l.color].fill;
+      roundRect(x+5+insetX, y+5+insetY, w, h, 14);
+      ctx.fill();
+
+      ctx.strokeStyle = selected ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.18)";
+      ctx.lineWidth = selected ? Math.max(2,Math.floor(cell*0.06)) : 1;
+      ctx.stroke();
+
+      if(s===0 && scale>0.15){
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.beginPath();
+        ctx.arc(x+cell*0.38, y+cell*0.45, Math.max(2,Math.floor(cell*0.06))*scale, 0, Math.PI*2);
+        ctx.arc(x+cell*0.62, y+cell*0.45, Math.max(2,Math.floor(cell*0.06))*scale, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1.0;
+}
+
+function draw(){
+  resizeCanvas();
+  const now = performance.now();
+
+  processMover(now);
+  processDrain(now);
+  processExitFX(now);
+  processClearTimer(now);
+
+  const CW = cv.width, CH = cv.height;
+  ctx.clearRect(0,0,CW,CH);
+
+  const {ox,oy,bw,bh} = metrics;
+
+  roundRect(ox-6, oy-6, bw+12, bh+12, 18);
+  ctx.fillStyle = "#0a0c11"; ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.stroke();
+
+  drawTiles();
+  drawExitFX(now);
+  drawLines(now);
+
+  requestAnimationFrame(draw);
+}
+
+/* ======================
+   TUNING PANEL UI (same as before)
+====================== */
+const DEFAULTS = JSON.parse(JSON.stringify(P));
+const panelSpec = [
+  {
+    title:"드래그 감도",
+    intro:"드래그를 얼마나 ‘짧게’ 움직여도 한 칸 이동이 발생하는지, 그리고 포인터가 갑자기 튀었을 때 급가속을 막는 안전장치들입니다.",
+    items:[
+      { key:"threshRatio", name:"한 칸 이동 임계값", unit:"cell 비율", min:0.20, max:0.70, step:0.01,
+        desc:"작을수록 조금만 끌어도 한 칸 이동(민감). 클수록 더 길게 끌어야 이동(안정).",
+        low:"민감", high:"안정" },
+      { key:"maxStepsPerMove", name:"한 번에 처리하는 최대 이동", unit:"steps/move", min:1, max:6, step:1,
+        desc:"포인터가 많이 움직여도 한 프레임에 ‘최대 몇 칸’까지만 예약합니다. 급가속/의도치 않은 연속 이동을 줄이는 역할.",
+        low:"적음", high:"많음" },
+      { key:"accCapCells", name:"입력 누적 캡", unit:"cells", min:0.5, max:3.0, step:0.1,
+        desc:"포인터가 갑자기 멀어져도 한 번에 반영되는 입력량을 제한합니다. 낮을수록 항상 일정 템포.",
+        low:"강함", high:"약함" },
+      { key:"teleportPx", name:"텔레포트 가드", unit:"px", min:40, max:260, step:10,
+        desc:"이 값보다 큰 델타는 ‘포인터 순간이동’으로 보고 무시합니다(프레임 튐/창 밖 이동).",
+        low:"민감", high:"관대" },
+      { key:"queueCap", name:"이동 예약 큐 제한", unit:"steps", min:1, max:20, step:1,
+        desc:"커서가 멀어졌을 때 라인이 커서까지 ‘쫓아가는’ 현상을 막는 핵심. 낮을수록 유저 의도 밖 동선이 줄어듭니다.",
+        low:"짧게", high:"길게" },
+    ]
+  },
+  {
+    title:"이동 느낌",
+    intro:"실제 ‘진행 속도’와 화면에서 보이는 ‘부드러움’을 결정합니다. 이 그룹만 만져도 체감이 크게 변합니다.",
+    items:[
+      { key:"stepMs", name:"이동 템포", unit:"ms/칸", min:40, max:180, step:5,
+        desc:"예약된 이동을 실제로 적용하는 간격. 낮을수록 빠르게 진행.",
+        low:"빠름", high:"느림" },
+      { key:"animMs", name:"이동 보간(스르륵)", unit:"ms", min:40, max:220, step:5,
+        desc:"한 칸 이동을 화면에서 얼마나 부드럽게 이어줄지. 너무 크면 답답, 너무 작으면 딱딱.",
+        low:"딱딱", high:"부드러움" },
+      { key:"blockedWaitMs", name:"막힘 대기", unit:"ms", min:30, max:180, step:5,
+        desc:"벽/충돌로 이동이 안 될 때 다음 입력 처리까지 쉬는 시간. 낮추면 더 즉각 반응.",
+        low:"즉각", high:"여유" },
+      { key:"nonSelectedAlpha", name:"비선택 라인 투명도", unit:"alpha", min:0.10, max:0.70, step:0.01,
+        desc:"선택되지 않은 라인을 얼마나 죽일지. 낮을수록 선택 라인 집중이 강함.",
+        low:"더 죽임", high:"덜 죽임" },
+    ]
+  },
+  {
+    title:"출구 연출",
+    intro:"‘머리 → 몸통 → 꼬리’ 순서로 하나씩 쏘옥 들어가게 만드는 수치들입니다.",
+    items:[
+      { key:"drainStepMs", name:"세그먼트 1개 흡입 속도", unit:"ms/세그먼트", min:60, max:260, step:5,
+        desc:"머리부터 하나씩 들어가는 템포. 낮을수록 빠르게 쏘옥.",
+        low:"빠름", high:"느림" },
+      { key:"drainPull", name:"출구로 끌리는 힘", unit:"0~0.5", min:0.00, max:0.50, step:0.01,
+        desc:"흡입 중 라인이 출구 방향으로 살짝 당겨지는 정도. 너무 크면 궤적이 이상해질 수 있음.",
+        low:"약함", high:"강함" },
+      { key:"drainShrink", name:"들어갈 때 축소량", unit:"0~1", min:0.20, max:0.98, step:0.01,
+        desc:"들어가는 세그먼트가 얼마나 작아지며 사라질지. 높을수록 ‘쏙’ 느낌이 강함.",
+        low:"약함", high:"강함" },
+      { key:"exitPulseMs", name:"출구 링 펄스", unit:"ms", min:120, max:600, step:10,
+        desc:"출구에서 링이 퍼지는 지속시간. 짧으면 톡톡, 길면 잔상.",
+        low:"짧게", high:"길게" },
+    ]
+  },
+];
+
+function setValue(key, v){
+  P[key] = v;
+  if(key === "queueCap"){ mover.queue.length = Math.min(mover.queue.length, P.queueCap); }
+  const vEl = document.getElementById("val_"+key);
+  if(vEl) vEl.textContent = String(P[key]);
+  const rEl = document.getElementById("rng_"+key);
+  if(rEl) rEl.value = String(P[key]);
+}
+
+function applyPreset(name){
+  if(name==="stable"){
+    setValue("threshRatio", 0.50);
+    setValue("maxStepsPerMove", 2);
+    setValue("accCapCells", 1.0);
+    setValue("teleportPx", 110);
+    setValue("queueCap", 3);
+    setValue("stepMs", 95);
+    setValue("animMs", 135);
+    setValue("blockedWaitMs", 70);
+    setValue("nonSelectedAlpha", 0.28);
+    setValue("drainStepMs", 125);
+    setValue("drainPull", 0.18);
+    setValue("drainShrink", 0.82);
+    setValue("exitPulseMs", 260);
+  } else if(name==="snappy"){
+    setValue("threshRatio", 0.36);
+    setValue("maxStepsPerMove", 3);
+    setValue("accCapCells", 1.4);
+    setValue("teleportPx", 140);
+    setValue("queueCap", 5);
+    setValue("stepMs", 65);
+    setValue("animMs", 85);
+    setValue("blockedWaitMs", 45);
+    setValue("nonSelectedAlpha", 0.30);
+    setValue("drainStepMs", 95);
+    setValue("drainPull", 0.22);
+    setValue("drainShrink", 0.88);
+    setValue("exitPulseMs", 220);
+  } else if(name==="slow"){
+    setValue("threshRatio", 0.52);
+    setValue("maxStepsPerMove", 2);
+    setValue("accCapCells", 0.9);
+    setValue("teleportPx", 95);
+    setValue("queueCap", 3);
+    setValue("stepMs", 120);
+    setValue("animMs", 170);
+    setValue("blockedWaitMs", 80);
+    setValue("nonSelectedAlpha", 0.25);
+    setValue("drainStepMs", 160);
+    setValue("drainPull", 0.16);
+    setValue("drainShrink", 0.78);
+    setValue("exitPulseMs", 320);
+  } else if(name==="default"){
+    for(const k in DEFAULTS) setValue(k, DEFAULTS[k]);
+  }
+}
+
+function buildPanel(){
+  const root = document.getElementById("panel");
+  root.innerHTML = "";
+
+  const presetBox = document.createElement("div");
+  presetBox.className = "group";
+  const ph = document.createElement("h4"); ph.textContent = "프리셋";
+  const pp = document.createElement("p");
+  pp.textContent = "감각을 빠르게 잡기 위한 추천 조합. 프리셋 적용 후, 아래 슬라이더로 미세 조정하세요.";
+  presetBox.appendChild(ph); presetBox.appendChild(pp);
+
+  const presets = document.createElement("div");
+  presets.className = "presets";
+  const ps = [
+    ["stable","안정(추천)"], ["snappy","빠릿"], ["slow","묵직"], ["default","기본값"]
+  ];
+  for(const [key, label] of ps){
+    const b = document.createElement("button");
+    b.className = "pbtn";
+    b.textContent = label;
+    b.onclick = ()=>applyPreset(key);
+    presets.appendChild(b);
+  }
+  presetBox.appendChild(presets);
+
+  const warn = document.createElement("div");
+  warn.className = "warn";
+  warn.textContent = "팁: ‘커서까지 따라감’이 느껴지면 먼저 [이동 예약 큐 제한]을 3~5로 낮추세요.";
+  presetBox.appendChild(warn);
+
+  root.appendChild(presetBox);
+
+  for(const g of panelSpec){
+    const box = document.createElement("div");
+    box.className = "group";
+    const h = document.createElement("h4"); h.textContent = g.title;
+    const p = document.createElement("p"); p.textContent = g.intro;
+    box.appendChild(h); box.appendChild(p);
+
+    for(const it of g.items){
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.id = "rng_"+it.key;
+      slider.min = it.min;
+      slider.max = it.max;
+      slider.step = it.step;
+      slider.value = P[it.key];
+
+      slider.oninput = ()=>{
+        const isInt = (String(it.step).indexOf(".")===-1);
+        const v = isInt ? parseInt(slider.value,10) : parseFloat(slider.value);
+        setValue(it.key, v);
+      };
+
+      const control = document.createElement("div");
+      control.className = "control";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = it.name;
+
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = it.desc;
+
+      meta.appendChild(name);
+      meta.appendChild(desc);
+
+      if(it.low || it.high){
+        const scale = document.createElement("div");
+        scale.className = "scale";
+        scale.innerHTML = `<span>${it.low||""}</span><span>${it.high||""}</span>`;
+        meta.appendChild(scale);
+      }
+
+      const right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.flexDirection = "column";
+      right.style.alignItems = "flex-end";
+      right.style.gap = "4px";
+
+      const unit = document.createElement("div");
+      unit.className = "unit";
+      unit.textContent = it.unit;
+
+      const value = document.createElement("div");
+      value.className = "value";
+      value.id = "val_"+it.key;
+      value.textContent = String(P[it.key]);
+
+      right.appendChild(unit);
+      right.appendChild(value);
+
+      control.appendChild(meta);
+      control.appendChild(right);
+
+      box.appendChild(slider);
+      box.appendChild(control);
+    }
+    root.appendChild(box);
+  }
+}
+buildPanel();
+
+/* ======================
+   EXCEL LOADER
+====================== */
+function setExcelPill(ok, text){
+  const el = document.getElementById("excelPill");
+  el.classList.remove("good","bad");
+  if(ok===true) el.classList.add("good");
+  if(ok===false) el.classList.add("bad");
+  el.innerHTML = "Excel: <strong class=\"mono\">" + text + "</strong>";
+}
+
+function normCell(v){
+  if(v===null || v===undefined) return "";
+  const s = String(v).trim();
+  return s;
+}
+
+function isLineToken(s){
+  return /^[BRGY](?:\d+|X)$/i.test(s);
+}
+function tokenColor(s){
+  const c = s[0].toUpperCase();
+  return (c==="B")?"blue":(c==="R")?"red":(c==="G")?"green":"yellow";
+}
+function tokenKey(s){ return s[0].toUpperCase(); }
+function tokenOrder(s){
+  const tail = s.slice(1).toUpperCase();
+  if(tail==="X") return 1e9;
+  const n = parseInt(tail,10);
+  return Number.isFinite(n) ? n : 1e8;
+}
+function manhattan(a,b){ return Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1]); }
+
+function parseSheetToStage(sheetName, sheet){
+  // 2D array using !ref range; we will shrink to last non-empty
+  const raw = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:"" });
+  // find last non-empty row/col
+  let maxR=-1, maxC=-1;
+  for(let r=0;r<raw.length;r++){
+    const row = raw[r] || [];
+    for(let c=0;c<row.length;c++){
+      const v = normCell(row[c]);
+      if(v!==""){
+        if(r>maxR) maxR=r;
+        if(c>maxC) maxC=c;
+      }
+    }
+  }
+  if(maxR<0 || maxC<0){
+    throw new Error(`시트 '${sheetName}'에 데이터가 없습니다(A1부터 값을 넣어야 함).`);
+  }
+  const Hs = maxR+1;
+  const Ws = maxC+1;
+
+  // build tiles + collect line tokens
+  const tokens = { B:new Map(), R:new Map(), G:new Map(), Y:new Map() };
+
+  const gridRows = [];
+  for(let r=0;r<Hs;r++){
+    let rowStr = "";
+    for(let c=0;c<Ws;c++){
+      const cell = normCell((raw[r]||[])[c]);
+      if(cell==="" || cell==="O"){
+        rowStr += ".";
+      } else if(cell==="X" || cell==="#"){
+        rowStr += "#";
+      } else if(cell==="+"){
+        rowStr += "+";
+      } else if(isExitChar(cell.toLowerCase())){
+        rowStr += cell.toLowerCase();
+      } else if(isLineToken(cell)){
+        const k = tokenKey(cell);
+        tokens[k].set(cell.toUpperCase(), [c,r]);
+        rowStr += "."; // underlying floor
+      } else {
+        throw new Error(`시트 '${sheetName}' (${c+1},${r+1})에 알 수 없는 토큰: '${cell}'`);
+      }
+    }
+    gridRows.push(rowStr);
+  }
+
+  // build lines (up to 4)
+  const linesOut = [];
+  const colorKeys = ["B","R","G","Y"];
+  for(const k of colorKeys){
+    if(tokens[k].size===0) continue;
+
+    const hasHead = tokens[k].has(k+"1");
+    const hasTail = tokens[k].has(k+"X");
+    if(!hasHead || !hasTail){
+      throw new Error(`시트 '${sheetName}'의 ${k} 라인은 '${k}1'과 '${k}X'가 모두 필요합니다.`);
+    }
+
+    // collect numbered tokens
+    const numbered = [];
+    for(const t of tokens[k].keys()){
+      if(t.endsWith("X")) continue;
+      const num = parseInt(t.slice(1),10);
+      if(!Number.isFinite(num)) continue;
+      numbered.push(num);
+    }
+    // require contiguous from 1..max
+    const maxNum = Math.max(...numbered);
+    for(let n=1;n<=maxNum;n++){
+      if(!tokens[k].has(k+String(n))){
+        throw new Error(`시트 '${sheetName}'의 ${k} 라인에서 번호 누락: '${k}${n}'가 없습니다.`);
+      }
+    }
+
+    // assemble ordered list: 1..max + X
+    const segs = [];
+    for(let n=1;n<=maxNum;n++){
+      segs.push(tokens[k].get(k+String(n)));
+    }
+    segs.push(tokens[k].get(k+"X"));
+
+    // adjacency validation
+    for(let i=0;i<segs.length-1;i++){
+      if(manhattan(segs[i], segs[i+1]) !== 1){
+        throw new Error(`시트 '${sheetName}'의 ${k} 라인이 끊어져 있습니다: ${k}${i+1} ↔ ${k}${i+2} (또는 꼬리) 인접해야 합니다.`);
+      }
+    }
+
+    linesOut.push({ color: tokenColor(k), segments: segs });
+  }
+
+  // enforce max 4 lines
+  if(linesOut.length > 4){
+    throw new Error(`시트 '${sheetName}': 블럭라인이 ${linesOut.length}개입니다. 최대 4개까지 허용됩니다.`);
+  }
+
+  return { name: sheetName, w: Ws, h: Hs, grid: gridRows, lines: linesOut };
+}
+
+async function loadExcelFromArrayBuffer(buf, label){
+  if(!window.XLSX) throw new Error("xlsx 라이브러리 로드 실패(네트워크 필요).");
+  const wb = XLSX.read(buf, { type:"array" });
+  const stages = [];
+  for(const sheetName of wb.SheetNames){
+    const sheet = wb.Sheets[sheetName];
+    stages.push(parseSheetToStage(sheetName, sheet));
+  }
+  if(stages.length===0) throw new Error("엑셀에 시트가 없습니다.");
+  STAGES = stages;
+  stageIndex = 0;
+  updateStagePill();
+  loadStage(0);
+  setExcelPill(true, `${label} (sheets: ${STAGES.length})`);
+}
+
+async function tryAutoFetchExcel(){
+  setStateLabel("Loading Excel...");
+  try{
+    const res = await fetch("stagedata.xlsx", { cache:"no-store" });
+    if(!res.ok) throw new Error("fetch failed");
+    const buf = await res.arrayBuffer();
+    await loadExcelFromArrayBuffer(buf, "stagedata.xlsx");
+  }catch(err){
+    // Auto fetch may fail under file:// or missing file.
+    setExcelPill(false, "자동 로드 실패 → '파일 선택'으로 업로드");
+    setStateLabel("Need Excel");
+    loadStage(0);
+  }
+}
+
+document.getElementById("pickExcel").onclick = ()=>document.getElementById("excelFile").click();
+document.getElementById("excelFile").addEventListener("change", async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  setStateLabel("Loading Excel...");
+  try{
+    const buf = await f.arrayBuffer();
+    await loadExcelFromArrayBuffer(buf, f.name);
+  }catch(err){
+    setExcelPill(false, "로드 실패: " + (err?.message || String(err)));
+    setStateLabel("Error");
+    console.error(err);
+  }
+});
+
+document.getElementById("reloadExcel").onclick = ()=>tryAutoFetchExcel();
+
+/* ======================
+   INIT
+====================== */
+resizeCanvas();
+loadStage(0);
+draw();
+tryAutoFetchExcel();
+</script>
+</body>
+</html>
